@@ -185,7 +185,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         }
 
         window.onDidChangeActiveNotebookEditor((e) => {
-            if (e === this.notebookEditor) {
+            if (e?.notebook.uri.toString() === this.notebookUri.toString()) {
                 this._onDidChangeViewState.fire();
             }
         }, this.internalDisposables);
@@ -195,7 +195,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
             }
         }, this.internalDisposables);
 
-        if (window.activeNotebookEditor === this.notebookEditor) {
+        if (window.activeNotebookEditor?.notebook.uri.toString() === this.notebookUri.toString()) {
             this._onDidChangeViewState.fire();
         }
 
@@ -499,11 +499,11 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
         const markdownCell = new NotebookCellData(NotebookCellKind.Markup, message, MARKDOWN_LANGUAGE);
         markdownCell.metadata = { isInteractiveWindowMessageCell: true };
         const insertionIndex =
-            notebookCell && notebookCell.index >= 0 ? notebookCell.index : this.notebookEditor.notebook.cellCount;
+            notebookCell && notebookCell.index >= 0 ? notebookCell.index : this.notebookDocument.cellCount;
         // If possible display the error message in the cell.
-        const controller = this.notebookControllerSelection.getSelected(this.notebookEditor.notebook);
+        const controller = this.notebookControllerSelection.getSelected(this.notebookDocument);
         const output = createOutputWithErrorMessageForDisplay(message);
-        if (this.notebookEditor.notebook.cellCount === 0 || !controller || !output || !notebookCell) {
+        if (this.notebookDocument.cellCount === 0 || !controller || !output || !notebookCell) {
             const edit = new WorkspaceEdit();
             const nbEdit = NotebookEdit.insertCells(insertionIndex, [markdownCell]);
             edit.set(this.notebookDocument.uri, [nbEdit]);
@@ -657,7 +657,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
             await this.generateCodeAndAddMetadata(cell, isDebug, kernel);
             if (isDebug && (settings.forceIPyKernelDebugger || !isLocalConnection(kernel.kernelConnectionMetadata))) {
                 // New ipykernel 7 debugger using the Jupyter protocol.
-                await this.debuggingManager.start(this.notebookEditor, cell);
+                await this.debuggingManager.start(this.notebookDocument, cell);
             } else if (
                 isDebug &&
                 isLocalConnection(kernel.kernelConnectionMetadata) &&
@@ -702,10 +702,10 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
 
     public async expandAllCells() {
         await Promise.all(
-            this.notebookEditor.notebook.getCells().map(async (_cell, index) => {
+            this.notebookDocument.getCells().map(async (_cell, index) => {
                 await this.commandManager.executeCommand('notebook.cell.expandCellInput', {
                     ranges: [{ start: index, end: index + 1 }],
-                    document: this.notebookEditor.notebook.uri
+                    document: this.notebookUri
                 });
             })
         );
@@ -713,13 +713,13 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
 
     public async collapseAllCells() {
         await Promise.all(
-            this.notebookEditor.notebook.getCells().map(async (cell, index) => {
+            this.notebookDocument.getCells().map(async (cell, index) => {
                 if (cell.kind !== NotebookCellKind.Code) {
                     return;
                 }
                 await this.commandManager.executeCommand('notebook.cell.collapseCellInput', {
                     ranges: [{ start: index, end: index + 1 }],
-                    document: this.notebookEditor.notebook.uri
+                    document: this.notebookUri
                 });
             })
         );
@@ -727,7 +727,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
 
     public async scrollToCell(id: string): Promise<void> {
         await this.show();
-        const matchingCell = this.notebookEditor.notebook
+        const matchingCell = this.notebookDocument
             .getCells()
             .find((cell) => getInteractiveCellMetadata(cell)?.id === id);
         if (matchingCell) {
@@ -738,7 +738,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
     }
 
     public async hasCell(id: string): Promise<boolean> {
-        return this.notebookEditor.notebook.getCells().some((cell) => getInteractiveCellMetadata(cell)?.id === id);
+        return this.notebookDocument.getCells().some((cell) => getInteractiveCellMetadata(cell)?.id === id);
     }
 
     public get owningResource(): Resource {
@@ -784,7 +784,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
     }
 
     private async addNotebookCell(code: string, file: Uri, line: number): Promise<NotebookCell> {
-        const notebookDocument = this.notebookEditor.notebook;
+        const notebookDocument = this.notebookDocument;
 
         // Strip #%% and store it in the cell metadata so we can reconstruct the cell structure when exporting to Python files
         const settings = this.configuration.getSettings(this.owningResource);
@@ -849,7 +849,7 @@ export class InteractiveWindow implements IInteractiveWindowLoadable {
 
     public async export() {
         const { magicCommandsAsComments } = this.configuration.getSettings(this.owningResource);
-        const cells = generateCellsFromNotebookDocument(this.notebookEditor.notebook, magicCommandsAsComments);
+        const cells = generateCellsFromNotebookDocument(this.notebookDocument, magicCommandsAsComments);
 
         // Should be an array of cells
         if (cells && this.exportDialog) {
